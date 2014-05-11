@@ -9,7 +9,7 @@ import (
 )
 
 // Run the Lamport distributed lock demo for n communicating goroutines
-func Demo(n int) {
+func demo(n int) {
 	// create input channel for each goroutine
 	chs := make([]chan lamport.Message, n)
 	for p := range chs {
@@ -22,7 +22,7 @@ func Demo(n int) {
 	var group sync.WaitGroup
 	group.Add(n)
 
-	// spawn goroutines
+	// spawn goroutine "workers"
 	for p, _ := range chs {
 		go func(myProc int) {
 			// initialize the distributed lock
@@ -32,11 +32,12 @@ func Demo(n int) {
 			lock.Acquire()
 			log.Println(myProc, "Have lock")
 
+			// "work"
+			time.Sleep(500 * time.Millisecond)
+
 			// release
 			lock.Release()
 			log.Println(myProc, "Released lock")
-
-			time.Sleep(2 * time.Second)
 
 			// sync
 			group.Done()
@@ -58,5 +59,5 @@ func main() {
 	}
 
 	// run the demo
-	Demo(*n)
+	demo(*n)
 }
