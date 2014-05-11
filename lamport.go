@@ -99,7 +99,7 @@ func (state *LamportLockState) sendAckMsg(target int) {
 // Process the current message, updating time vector and heap
 // Not threadsafe on its own: called only from serviceMessage (within locked region)
 func (state *LamportLockState) processMessage(m Message) {
-	// update the the process-time vector and current time
+	// update the process-time vector and current time
 	state.seen[m.Proc] = m.Time
 	if m.Time > state.time {
 		state.time = m.Time
@@ -166,7 +166,6 @@ func (state *LamportLockState) serviceMessage() {
 	case m := <-state.chns[state.proc]:
 		state.processMessage(m)
 	default:
-		return
 	}
 
 	// unlock the state structure
