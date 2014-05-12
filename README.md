@@ -11,4 +11,4 @@ accompanying demo code).
 While the use of channels as the primary interface for communication may appear
 limiting (i.e. to the single-node case), these can of course act as conduits to
 more complex logic for exchanging messages over a network - thereby making the
-example truly distributed.
+example truly distributed (though eliding the issue of reliable delivery, etc.).
