@@ -5,6 +5,7 @@ import (
 	"github.com/swfrench/lamport-go"
 	"log"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -13,35 +14,49 @@ func demo(n int) {
 	// create input channel for each goroutine
 	chs := make([]chan lamport.Message, n)
 	for p := range chs {
-		// ensure channel buffer is of at least size n (simultaneous
-		// acquisition attempts will not block)
-		chs[p] = make(chan lamport.Message, n)
+		chs[p] = make(chan lamport.Message, 512)
 	}
 
-	// init the waitgroup
+	// initialize the waitgroup
 	var group sync.WaitGroup
 	group.Add(n)
 
+	// initialize the shared test var
+	var tvar int32
+
 	// spawn goroutine "workers"
 	for p, _ := range chs {
-		go func(myProc int) {
+		go func(myProc int, ptvar *int32) {
 			// initialize the distributed lock
 			lock := lamport.Start(myProc, chs)
 
 			// acquire
 			lock.Acquire()
-			log.Println(myProc, "Have lock")
+			log.Println(myProc, "Acquired lock")
 
-			// "work"
-			time.Sleep(500 * time.Millisecond)
+			// lock is acquired - set the test var to my proc id
+			atomic.StoreInt32(ptvar, int32(myProc))
+
+			// sleep for a bit
+			time.Sleep(100 * time.Millisecond)
+
+			// sample the test var
+			tval := atomic.LoadInt32(ptvar)
 
 			// release
 			lock.Release()
 			log.Println(myProc, "Released lock")
 
+			// check the sampled test var
+			if tval != int32(myProc) {
+				log.Fatal("Error: test var =", tval, "!= myProc")
+			} else {
+				log.Println(" OK: mutating test var is still", tval)
+			}
+
 			// sync
 			group.Done()
-		}(p)
+		}(p, &tvar)
 	}
 
 	// wait on the team
