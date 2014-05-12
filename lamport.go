@@ -10,7 +10,7 @@ import (
 // Sleep time used in:
 //  - polling for lock acquisition
 //  - servicing incoming messages
-const SleepTime = 50 * time.Millisecond
+const SleepTime = 10 * time.Millisecond
 
 // Structure representing internal state of distributed lock
 type LamportLockState struct {
@@ -34,55 +34,58 @@ func initState(p int, chns []chan Message) *LamportLockState {
 	return &s
 }
 
-// Send request to all other procs and it enqueue locally
-func (state *LamportLockState) sendRequestMsg() {
-	// lock the state structure
-	state.lock.Lock()
-
-	// advance logical time
-	state.time += 1
-
-	// initialize message and send
-	m := Message{Type: MessageRequest, Time: state.time, Proc: state.proc}
+// Broadcast a message to all peers
+func (state *LamportLockState) bcast(m Message) {
 	for p, chn := range state.chns {
 		if p != state.proc {
 			chn <- m
 		}
 	}
-
-	// enqueue
-	heap.Push(state.reqs, m)
-
-	// unlock the state structure
-	state.lock.Unlock()
 }
 
-// Send release to all other procs and dequeue locally
+// Send request to all other procs and it enqueue locally (threadsafe)
+func (state *LamportLockState) sendRequestMsg() {
+	// lock state struct (mutating time and reqs)
+	state.lock.Lock()
+
+	// advance logical time, initialize message, enqueue
+	state.time += 1
+	m := Message{
+		Type: MessageRequest,
+		Time: state.time,
+		Proc: state.proc}
+	heap.Push(state.reqs, m)
+
+	// release
+	state.lock.Unlock()
+
+	// send request message
+	state.bcast(m)
+}
+
+// Send release to all other procs and dequeue locally (threadsafe)
 func (state *LamportLockState) sendReleaseMsg() {
 	// check to make sure we really have the lock
-	if !state.haveLock() {
+	if ! state.haveLock() {
 		log.Fatal("Cannot send release if we do not have the lock")
 	}
 
-	// lock the state structure
+	// lock state struct (mutating time and reqs)
 	state.lock.Lock()
 
-	// advance logical time
+	// advance logical time, initialize message, dequeue top of heap
 	state.time += 1
-
-	// initialize message and send
-	m := Message{Type: MessageRelease, Time: state.time, Proc: state.proc}
-	for p, chn := range state.chns {
-		if p != state.proc {
-			chn <- m
-		}
-	}
-
-	// dequeue
+	m := Message{
+		Type: MessageRelease,
+		Time: state.time,
+		Proc: state.proc}
 	heap.Pop(state.reqs)
 
-	// unlock the state structure
+	// release
 	state.lock.Unlock()
+
+	// send release message
+	state.bcast(m)
 }
 
 // Send an acknowledgement message
@@ -145,8 +148,7 @@ func (state *LamportLockState) haveLock() bool {
 	if state.reqs.Len() > 0 {
 		m := (*state.reqs)[0]
 		if m.Proc == state.proc {
-			allSeen := state.allProcessesSeen(m.Time)
-			if allSeen {
+			if state.allProcessesSeen(m.Time) {
 				state.lock.Unlock()
 				return true
 			}
